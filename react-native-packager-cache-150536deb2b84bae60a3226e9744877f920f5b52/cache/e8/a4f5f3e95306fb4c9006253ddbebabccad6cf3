@@ -1,0 +1,23 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _redux = require('redux');
+
+var _CreateStore = require('./CreateStore');
+
+var _CreateStore2 = babelHelpers.interopRequireDefault(_CreateStore);
+
+var _Sagas = require('../Sagas/');
+
+var _Sagas2 = babelHelpers.interopRequireDefault(_Sagas);
+
+exports.default = function () {
+  var rootReducer = (0, _redux.combineReducers)({
+    nav: require('./NavigationRedux').reducer,
+    github: require('./GithubRedux').reducer,
+    search: require('./SearchRedux').reducer
+  });
+
+  return (0, _CreateStore2.default)(rootReducer, _Sagas2.default);
+};

@@ -1,0 +1,48 @@
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var Symbol = require('es6-symbol');
+
+var Singleton = function () {
+  function Singleton() {
+    babelHelpers.classCallCheck(this, Singleton);
+
+    var Class = this.constructor;
+
+    if (!Class[this.singleton]) {
+      Class[this.singleton] = this;
+    }
+
+    return Class[this.singleton];
+  }
+
+  babelHelpers.createClass(Singleton, null, [{
+    key: 'reset',
+    value: function reset() {
+      delete this[this.singleton];
+    }
+  }, {
+    key: 'instance',
+    get: function get() {
+      if (!this[this.singleton]) {
+        this[this.singleton] = new this();
+      }
+
+      return this[this.singleton];
+    },
+    set: function set(instance) {
+      this[this.singleton] = instance;
+      return this[this.singleton];
+    }
+  }, {
+    key: 'singleton',
+    get: function get() {
+      return Symbol(this.namespace);
+    }
+  }]);
+  return Singleton;
+}();
+
+exports.default = Singleton;

@@ -1,0 +1,404 @@
+'use strict';
+
+function _interopDefault(ex) {
+  return ex && typeof ex === 'object' && 'default' in ex ? ex['default'] : ex;
+}
+
+var R = require('ramda');
+var R__default = _interopDefault(R);
+var redux = require('redux');
+var RS = _interopDefault(require('ramdasauce'));
+
+var DEFAULT_REPLACER_TYPE = 'REACTOTRON_RESTORE_STATE';
+
+var createReplacementReducer = function createReplacementReducer(rootReducer) {
+  var actionName = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : DEFAULT_REPLACER_TYPE;
+
+  return function (state, action) {
+    var whichState = action.type === actionName ? action.state : state;
+    return rootReducer(whichState, action);
+  };
+};
+
+var _typeof = typeof Symbol === "function" && typeof (typeof Symbol === 'function' ? Symbol.iterator : '@@iterator') === "symbol" ? function (obj) {
+  return typeof obj;
+} : function (obj) {
+  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== (typeof Symbol === 'function' ? Symbol.prototype : '@@prototype') ? "symbol" : typeof obj;
+};
+
+var _extends = Object.assign || function (target) {
+  for (var i = 1; i < arguments.length; i++) {
+    var source = arguments[i];
+
+    for (var key in source) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        target[key] = source[key];
+      }
+    }
+  }
+
+  return target;
+};
+
+var DEFAULTS = {};var createActionTracker = function createActionTracker(reactotron) {
+  var trackerOptions = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
+  if (!(R.is(Object, reactotron) && typeof reactotron.use === 'function')) {
+    throw new Error('invalid reactotron passed');
+  }
+
+  var options = R.merge(DEFAULTS, trackerOptions);
+  var exceptions = R.concat([DEFAULT_REPLACER_TYPE], options.except || []);
+
+  return function (next) {
+    return function (reducer, initialState, enhancer) {
+      var store = next(reducer, initialState, enhancer);
+
+      return _extends({}, store, {
+        dispatch: function dispatch(action) {
+          var elapsed = reactotron.startTimer();
+
+          var result = store.dispatch(action);
+
+          var ms = elapsed();
+
+          var unwrappedAction = action.type === 'PERFORM_ACTION' && action.action ? action.action : action;
+
+          var matchException = function matchException(exception, actionType) {
+            if (typeof exception === 'string') {
+              return actionType === exception;
+            } else if (typeof exception === 'function') {
+              return exception(actionType);
+            } else if (exception instanceof RegExp) {
+              return exception.test(actionType);
+            } else {
+              return false;
+            }
+          };
+
+          var matchExceptions = R.any(function (exception) {
+            return matchException(exception, unwrappedAction.type);
+          }, exceptions);
+
+          if (!matchExceptions) {
+            var important = false;
+            if (trackerOptions && typeof trackerOptions.isActionImportant === 'function') {
+              important = !!trackerOptions.isActionImportant(unwrappedAction);
+            }
+
+            reactotron.reportReduxAction(unwrappedAction, ms, important);
+          }
+
+          return result;
+        }
+      });
+    };
+  };
+};
+
+var reportAction = function reportAction(reactotron, action, ms) {
+  var important = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;
+
+  var name = action.type;
+
+  if ((typeof name === 'undefined' ? 'undefined' : _typeof(name)) === 'symbol') {
+    name = name.toString().replace(/^Symbol\(/, '').replace(/\)$/, '');
+  }
+
+  reactotron.send('state.action.complete', { name: name, action: action, ms: ms }, important);
+};
+
+var createStore$1 = function createStore$1(reactotron, rootReducer, preloadedState, enhancer) {
+  if (typeof preloadedState === 'function' && typeof enhancer === 'undefined') {
+    enhancer = preloadedState;
+    preloadedState = undefined;
+  }
+
+  var reducer = reactotron.createReplacementReducer(rootReducer);
+
+  var wrappedEnhancer = redux.compose(enhancer, reactotron.createActionTracker());
+
+  var store = redux.createStore(reducer, preloadedState, wrappedEnhancer);
+
+  reactotron.setReduxStore(store);
+
+  return store;
+};
+
+var getCleanedState = function getCleanedState(state) {
+  if (state.toJS) {
+    return state.toJS();
+  }
+
+  return state;
+};
+
+var requestKeys = function requestKeys(state, reactotron, path) {
+  var cleanedState = getCleanedState(state);
+
+  if (RS.isNilOrEmpty(path)) {
+    reactotron.stateKeysResponse(null, R__default.keys(cleanedState));
+  } else {
+    var keys = R__default.keys(RS.dotPath(path, cleanedState));
+    reactotron.stateKeysResponse(path, keys);
+  }
+};
+
+var requestValues = function requestValues(state, reactotron, path) {
+  var cleanedState = getCleanedState(state);
+
+  if (RS.isNilOrEmpty(path)) {
+    reactotron.stateValuesResponse(null, cleanedState);
+  } else {
+    reactotron.stateValuesResponse(path, RS.dotPath(path, cleanedState));
+  }
+};
+
+var getSubscriptionValues = function getSubscriptionValues(subscriptions, state) {
+  var cleanedState = getCleanedState(state);
+
+  return R__default.pipe(R__default.map(R__default.when(R__default.isNil, R__default.always(''))), R__default.filter(RS.endsWith('.*')), R__default.map(function (key) {
+    var keyMinusWildcard = R__default.slice(0, -2, key);
+    var value = RS.dotPath(keyMinusWildcard, cleanedState);
+    if (R__default.is(Object, value) && !RS.isNilOrEmpty(value)) {
+      return R__default.pipe(R__default.keys, R__default.map(function (key) {
+        return keyMinusWildcard + '.' + key;
+      }))(value);
+    }
+    return [];
+  }), R__default.concat(R__default.map(R__default.when(R__default.isNil, R__default.always('')), subscriptions)), R__default.flatten, R__default.reject(RS.endsWith('.*')), R__default.uniq, R__default.sortBy(R__default.identity), R__default.map(function (key) {
+    return {
+      path: key,
+      value: RS.isNilOrEmpty(key) ? cleanedState : RS.dotPath(key, cleanedState)
+    };
+  }))(subscriptions);
+};
+
+var _this = undefined;
+
+var reactotronRedux = function reactotronRedux() {
+  var pluginConfig = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  return function (reactotron) {
+    var reduxStore = null;
+
+    var subscriptions = [];
+
+    var sendSubscriptions = function sendSubscriptions() {
+      var changes = getSubscriptionValues(subscriptions, reduxStore.getState());
+      reactotron.stateValuesChange(changes);
+    };
+
+    var sendSubscriptionsIfNeeded = function sendSubscriptionsIfNeeded() {
+      var changes = getSubscriptionValues(subscriptions, reduxStore.getState());
+      if (!R.isEmpty(changes)) {
+        sendSubscriptions();
+      }
+    };
+
+    var restoreActionType = pluginConfig.restoreActionType || DEFAULT_REPLACER_TYPE;
+    var onBackup = pluginConfig.onBackup || R.identity;
+    var onRestore = pluginConfig.onRestore || R.identity;
+
+    return {
+      onCommand: function onCommand(_ref) {
+        var type = _ref.type,
+            payload = _ref.payload;
+
+        switch (type) {
+          case 'state.keys.request':
+            return requestKeys(reduxStore.getState(), reactotron, payload.path);
+
+          case 'state.values.request':
+            return requestValues(reduxStore.getState(), reactotron, payload.path);
+
+          case 'state.values.subscribe':
+            subscriptions = R.pipe(R.flatten, R.uniq)(payload.paths);
+            sendSubscriptions();
+            return;
+
+          case 'state.action.dispatch':
+            reduxStore.dispatch(payload.action);
+            return;
+
+          case 'state.backup.request':
+            {
+              var state = onBackup(reduxStore.getState());
+              reactotron.send('state.backup.response', { state: state });
+              return;
+            }
+
+          case 'state.restore.request':
+            {
+              var _state = onRestore(payload.state, reduxStore.getState());
+              reduxStore.dispatch({ type: restoreActionType, state: _state });
+            }
+        }
+      },
+
+      features: {
+        createActionTracker: createActionTracker.bind(_this, reactotron, pluginConfig),
+
+        reportReduxAction: reportAction.bind(_this, reactotron),
+
+        createReplacementReducer: createReplacementReducer,
+
+        createStore: createStore$1.bind(_this, reactotron),
+
+        setReduxStore: function setReduxStore(store) {
+          reduxStore = store;
+
+          store.subscribe(sendSubscriptionsIfNeeded);
+        }
+      }
+    };
+  };
+};
+
+var RESTORE_ACTION_TYPE = 'REACTOTRON_RESTORE_STATE';
+var DEFAULT_ON_BACKUP = function DEFAULT_ON_BACKUP(state) {
+  return state;
+};
+var DEFAULT_ON_RESTORE = function DEFAULT_ON_RESTORE(state) {
+  return state;
+};
+
+var createPlugin = function createPlugin(store) {
+  var pluginConfig = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
+  var restoreActionType = pluginConfig.restoreActionType || RESTORE_ACTION_TYPE;
+
+  var onBackup = pluginConfig.onBackup || DEFAULT_ON_BACKUP;
+  var onRestore = pluginConfig.onRestore || DEFAULT_ON_RESTORE;
+
+  var capturedSend = void 0;
+
+  var subscriptions = [];
+
+  var plugin = function plugin(reactotron) {
+    capturedSend = reactotron.send;
+
+    var sendSubscriptions = function sendSubscriptions() {
+      var changes = getSubscriptionValues(subscriptions, store.getState());
+      reactotron.stateValuesChange(changes);
+    };
+
+    var sendSubscriptionsIfNeeded = function sendSubscriptionsIfNeeded() {
+      var changes = getSubscriptionValues(subscriptions, store.getState());
+      if (!R.isEmpty(changes)) {
+        sendSubscriptions();
+      }
+    };
+
+    store.subscribe(sendSubscriptionsIfNeeded);
+
+    return {
+      onCommand: function onCommand(_ref) {
+        var type = _ref.type,
+            payload = _ref.payload;
+
+        switch (type) {
+          case 'state.keys.request':
+            return requestKeys(store.getState(), reactotron, payload.path);
+
+          case 'state.values.request':
+            return requestValues(store.getState(), reactotron, payload.path);
+
+          case 'state.values.subscribe':
+            subscriptions = R.pipe(R.flatten, R.uniq)(payload.paths);
+            sendSubscriptions();
+            return;
+
+          case 'state.action.dispatch':
+            store.dispatch(payload.action);
+            return;
+
+          case 'state.backup.request':
+            {
+              var state = onBackup(store.getState());
+              reactotron.send('state.backup.response', { state: state });
+              return;
+            }
+
+          case 'state.restore.request':
+            {
+              var _state = onRestore(payload.state);
+              store.dispatch({ type: restoreActionType, state: _state });
+            }
+        }
+      }
+    };
+  };
+
+  plugin.report = function (action, ms) {
+    var important = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
+
+    if (!capturedSend) return;
+
+    var name = action.type;
+
+    if ((typeof name === 'undefined' ? 'undefined' : _typeof(name)) === 'symbol') {
+      name = name.toString().replace(/^Symbol\(/, '').replace(/\)$/, '');
+    }
+
+    capturedSend('state.action.complete', { name: name, action: action, ms: ms }, important);
+  };
+
+  return plugin;
+};
+
+var DEFAULTS$1 = {};var createReactotronStoreEnhancer = function createReactotronStoreEnhancer(reactotron) {
+  var enhancerOptions = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
+  if (!(R.is(Object, reactotron) && typeof reactotron.use === 'function')) {
+    throw new Error('invalid reactotron passed');
+  }
+
+  var options = R.merge(DEFAULTS$1, enhancerOptions);
+  var exceptions = R.concat(['REACTOTRON_RESTORE_STATE'], options.except || []);
+
+  var reactotronEnhancer = function reactotronEnhancer(createStore$$1) {
+    return function (reducer, initialState, enhancer) {
+      var store = createStore$$1(reducer, initialState, enhancer);
+
+      var originalDispatch = store.dispatch;
+
+      var dispatch = function dispatch(action) {
+        var elapsed = reactotron.startTimer();
+
+        var result = originalDispatch(action);
+
+        var ms = elapsed();
+
+        if (!R.contains(action.type, exceptions)) {
+          var important = false;
+          if (enhancerOptions && typeof enhancerOptions.isActionImportant === 'function') {
+            important = !!enhancerOptions.isActionImportant(action);
+          }
+
+          plugin.report(action, ms, important);
+        }
+
+        return result;
+      };
+      var newStore = R.merge(store, { dispatch: dispatch.bind(store) });
+
+      var plugin = createPlugin(newStore, {
+        onRestore: options.onRestore,
+        onBackup: options.onBackup
+      });
+      reactotron.use(plugin);
+
+      return newStore;
+    };
+  };
+
+  return reactotronEnhancer;
+};
+
+createReactotronStoreEnhancer.createReactotronStoreEnhancer = createReactotronStoreEnhancer;
+
+createReactotronStoreEnhancer.createReplacementReducer = createReplacementReducer;
+
+createReactotronStoreEnhancer.reactotronRedux = reactotronRedux;
+
+module.exports = createReactotronStoreEnhancer;

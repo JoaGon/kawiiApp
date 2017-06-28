@@ -1,0 +1,218 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Firestack = undefined;
+
+var _log = require('./utils/log');
+
+var _log2 = babelHelpers.interopRequireDefault(_log);
+
+var _reactNative = require('react-native');
+
+var _promisify = require('./utils/promisify');
+
+var _promisify2 = babelHelpers.interopRequireDefault(_promisify);
+
+var _singleton = require('./utils/singleton');
+
+var _singleton2 = babelHelpers.interopRequireDefault(_singleton);
+
+var _remoteConfig = require('./modules/remoteConfig');
+
+var _remoteConfig2 = babelHelpers.interopRequireDefault(_remoteConfig);
+
+var _authentication = require('./modules/authentication');
+
+var _database = require('./modules/database');
+
+var _analytics = require('./modules/analytics');
+
+var _storage = require('./modules/storage');
+
+var _presence = require('./modules/presence');
+
+var _cloudmessaging = require('./modules/cloudmessaging');
+
+var FirestackModule = _reactNative.NativeModules.Firestack;
+var FirestackModuleEvt = new _reactNative.NativeEventEmitter(FirestackModule);
+
+var log = void 0;
+
+var Firestack = exports.Firestack = function (_Singleton) {
+  babelHelpers.inherits(Firestack, _Singleton);
+
+  function Firestack(options) {
+    var _this;
+
+    babelHelpers.classCallCheck(this, Firestack);
+
+    var instance = (_this = babelHelpers.possibleConstructorReturn(this, (Firestack.__proto__ || Object.getPrototypeOf(Firestack)).call(this, options)), _this);
+
+    instance.options = options || {};
+    instance._debug = instance.options.debug || false;
+
+    _log2.default.enable(instance._debug);
+    log = instance._log = new _log2.default('firestack');
+
+    log.info('Creating new firestack instance');
+
+    instance._remoteConfig = instance.options.remoteConfig || {};
+    delete instance.options.remoteConfig;
+
+    instance.configured = instance.options.configure || false;
+    instance.auth = null;
+
+    instance.eventHandlers = {};
+
+    log.info('Calling configure with options', instance.options);
+    instance.configurePromise = instance.configure(instance.options);
+
+    instance._auth = new _authentication.Authentication(instance, instance.options);
+    return _this;
+  }
+
+  babelHelpers.createClass(Firestack, [{
+    key: 'configure',
+    value: function configure() {
+      var _this2 = this;
+
+      var opts = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+      if (!this.configurePromise) {
+        var firestackOptions = babelHelpers.extends({}, this.options, opts);
+
+        this.configurePromise = (0, _promisify2.default)('configureWithOptions', FirestackModule)(firestackOptions).then(function (configuredProperties) {
+          log.info('Native configureWithOptions success', configuredProperties);
+          _this2.configured = true;
+          _this2.firestackOptions = configuredProperties;
+          return configuredProperties;
+        }).catch(function (err) {
+          log.info('Native error occurred while calling configure', err);
+        });
+      }
+      return this.configurePromise;
+    }
+  }, {
+    key: 'onReady',
+    value: function onReady(cb) {
+      return this.configurePromise = this.configurePromise.then(cb);
+    }
+  }, {
+    key: 'setStore',
+    value: function setStore(store) {
+      if (store) {
+        this.log.info('Setting the store for Firestack instance');
+        this._store = store;
+      }
+    }
+  }, {
+    key: 'on',
+    value: function on(name, cb, nativeModule) {
+      if (!this.eventHandlers[name]) {
+        this.eventHandlers[name] = [];
+      }
+      if (!nativeModule) {
+        nativeModule = FirestackModuleEvt;
+      }
+      var sub = nativeModule.addListener(name, cb);
+      this.eventHandlers[name].push(sub);
+      return sub;
+    }
+  }, {
+    key: 'off',
+    value: function off(name) {
+      if (this.eventHandlers[name]) {
+        this.eventHandlers[name].forEach(function (subscription) {
+          return subscription.remove();
+        });
+      }
+    }
+  }, {
+    key: 'auth',
+    get: function get() {
+      if (!this._auth) {
+        this._auth = new _authentication.Authentication(this);
+      }
+      return this._auth;
+    }
+  }, {
+    key: 'database',
+    get: function get() {
+      if (!this._db) {
+        this._db = new _database.Database(this);
+      }
+      return this._db;
+    }
+  }, {
+    key: 'analytics',
+    get: function get() {
+      if (!this._analytics) {
+        this._analytics = new _analytics.Analytics(this);
+      }
+      return this._analytics;
+    }
+  }, {
+    key: 'storage',
+    get: function get() {
+      if (!this._storage) {
+        this._storage = new _storage.Storage(this);
+      }
+      return this._storage;
+    }
+  }, {
+    key: 'presence',
+    get: function get() {
+      if (!this._presence) {
+        this._presence = new _presence.Presence(this);
+      }
+      return this._presence;
+    }
+  }, {
+    key: 'cloudMessaging',
+    get: function get() {
+      if (!this._cloudMessaging) {
+        this._cloudMessaging = new _cloudmessaging.CloudMessaging(this);
+      }
+      return this._cloudMessaging;
+    }
+  }, {
+    key: 'ServerValue',
+    get: function get() {
+      return (0, _promisify2.default)('serverValue', FirestackModule)();
+    }
+  }, {
+    key: 'remoteConfig',
+    get: function get() {
+      if (!this.remoteConfig) {
+        this.remoteConfig = new _remoteConfig2.default(this._remoteConfig);
+      }
+      return this.remoteConfig;
+    }
+  }, {
+    key: 'app',
+    get: function get() {
+      return this.appInstance;
+    }
+  }, {
+    key: 'log',
+    get: function get() {
+      return this._log;
+    }
+  }, {
+    key: 'store',
+    get: function get() {
+      return this._store;
+    }
+  }, {
+    key: 'constants',
+    get: function get() {
+      if (!this._constants) {
+        this._constants = babelHelpers.extends({}, _storage.Storage.constants);
+      }
+      return this._constants;
+    }
+  }]);
+  return Firestack;
+}(_singleton2.default);
+
+exports.default = Firestack;

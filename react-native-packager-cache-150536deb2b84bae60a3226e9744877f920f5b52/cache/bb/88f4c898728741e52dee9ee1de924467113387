@@ -1,0 +1,46 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = root;
+
+var _effects = require('redux-saga/effects');
+
+var _Api = require('../Services/Api');
+
+var _Api2 = babelHelpers.interopRequireDefault(_Api);
+
+var _FixtureApi = require('../Services/FixtureApi');
+
+var _FixtureApi2 = babelHelpers.interopRequireDefault(_FixtureApi);
+
+var _DebugConfig = require('../Config/DebugConfig');
+
+var _DebugConfig2 = babelHelpers.interopRequireDefault(_DebugConfig);
+
+var _StartupRedux = require('../Redux/StartupRedux');
+
+var _GithubRedux = require('../Redux/GithubRedux');
+
+var _StartupSagas = require('./StartupSagas');
+
+var _GithubSagas = require('./GithubSagas');
+
+var _marked = [root].map(regeneratorRuntime.mark);
+
+var api = _DebugConfig2.default.useFixtures ? _FixtureApi2.default : _Api2.default.create();
+
+function root() {
+  return regeneratorRuntime.wrap(function root$(_context) {
+    while (1) {
+      switch (_context.prev = _context.next) {
+        case 0:
+          _context.next = 2;
+          return [(0, _effects.takeLatest)(_StartupRedux.StartupTypes.STARTUP, _StartupSagas.startup), (0, _effects.takeLatest)(_GithubRedux.GithubTypes.USER_REQUEST, _GithubSagas.getUserAvatar, api)];
+
+        case 2:
+        case 'end':
+          return _context.stop();
+      }
+    }
+  }, _marked[0], this);
+}

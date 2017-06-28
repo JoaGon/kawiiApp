@@ -1,0 +1,56 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _redux = require('redux');
+
+var _reduxPersist = require('redux-persist');
+
+var _DebugConfig = require('../Config/DebugConfig');
+
+var _DebugConfig2 = babelHelpers.interopRequireDefault(_DebugConfig);
+
+var _reduxSaga = require('redux-saga');
+
+var _reduxSaga2 = babelHelpers.interopRequireDefault(_reduxSaga);
+
+var _RehydrationServices = require('../Services/RehydrationServices');
+
+var _RehydrationServices2 = babelHelpers.interopRequireDefault(_RehydrationServices);
+
+var _ReduxPersist = require('../Config/ReduxPersist');
+
+var _ReduxPersist2 = babelHelpers.interopRequireDefault(_ReduxPersist);
+
+var _ScreenTrackingMiddleware = require('./ScreenTrackingMiddleware');
+
+var _ScreenTrackingMiddleware2 = babelHelpers.interopRequireDefault(_ScreenTrackingMiddleware);
+
+exports.default = function (rootReducer, rootSaga) {
+
+  var middleware = [];
+  var enhancers = [];
+
+  middleware.push(_ScreenTrackingMiddleware2.default);
+
+  var sagaMonitor = _DebugConfig2.default.useReactotron ? console.tron.createSagaMonitor() : null;
+  var sagaMiddleware = (0, _reduxSaga2.default)({ sagaMonitor: sagaMonitor });
+  middleware.push(sagaMiddleware);
+
+  enhancers.push(_redux.applyMiddleware.apply(undefined, middleware));
+
+  if (_ReduxPersist2.default.active) {
+    enhancers.push((0, _reduxPersist.autoRehydrate)());
+  }
+
+  var createAppropriateStore = _DebugConfig2.default.useReactotron ? console.tron.createStore : _redux.createStore;
+  var store = createAppropriateStore(rootReducer, _redux.compose.apply(undefined, enhancers));
+
+  if (_ReduxPersist2.default.active) {
+    _RehydrationServices2.default.updateReducers(store);
+  }
+
+  sagaMiddleware.run(rootSaga);
+
+  return store;
+};

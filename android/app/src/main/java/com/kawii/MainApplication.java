@@ -3,6 +3,9 @@ package com.kawii;
 import android.app.Application;
 
 import com.facebook.react.ReactApplication;
+import com.rhaker.reactnativesmsandroid.RNSmsAndroidPackage;
+import com.pilloxa.backgroundjob.BackgroundJobPackage;
+import io.fullstack.firestack.FirestackPackage;
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.shell.MainReactPackage;
@@ -22,7 +25,10 @@ public class MainApplication extends Application implements ReactApplication {
     @Override
     protected List<ReactPackage> getPackages() {
       return Arrays.<ReactPackage>asList(
-          new MainReactPackage()
+          new MainReactPackage(),
+            new RNSmsAndroidPackage(),
+            new BackgroundJobPackage(),
+            new FirestackPackage()
       );
     }
   };

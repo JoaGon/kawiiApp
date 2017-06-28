@@ -1,0 +1,25 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = {
+  getRoot: function getRoot() {
+    return {
+      ok: true,
+      data: require('../Fixtures/root.json')
+    };
+  },
+  getRate: function getRate() {
+    return {
+      ok: true,
+      data: require('../Fixtures/rateLimit.json')
+    };
+  },
+  getUser: function getUser(username) {
+    var gantmanData = require('../Fixtures/gantman.json');
+    var skellockData = require('../Fixtures/skellock.json');
+    return {
+      ok: true,
+      data: username.toLowerCase() === 'gantman' ? gantmanData : skellockData
+    };
+  }
+};

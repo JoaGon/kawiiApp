@@ -1,0 +1,29 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _reactNative = require('react-native');
+
+var _Themes = require('../../Themes/');
+
+exports.default = _reactNative.StyleSheet.create({
+  applicationView: {
+    flex: 1
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: _Themes.Colors.background
+  },
+  welcome: {
+    fontSize: 20,
+    textAlign: 'center',
+    fontFamily: _Themes.Fonts.type.base,
+    margin: _Themes.Metrics.baseMargin
+  },
+  myImage: {
+    width: 200,
+    height: 200,
+    alignSelf: 'center'
+  }
+});

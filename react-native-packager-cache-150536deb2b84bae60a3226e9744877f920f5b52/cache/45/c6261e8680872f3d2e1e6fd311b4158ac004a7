@@ -1,0 +1,651 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Database = undefined;
+
+var _reactNative = require('react-native');
+
+var _promisify = require('../utils/promisify');
+
+var _promisify2 = babelHelpers.interopRequireDefault(_promisify);
+
+var _base = require('./base');
+
+var FirestackDatabase = _reactNative.NativeModules.FirestackDatabase;
+var FirestackDatabaseEvt = new _reactNative.NativeEventEmitter(FirestackDatabase);
+
+var dbSubscriptions = {};
+
+var DataSnapshot = function () {
+  function DataSnapshot(ref, snapshot) {
+    babelHelpers.classCallCheck(this, DataSnapshot);
+
+    this.ref = ref;
+    this.key = snapshot.key;
+    this.value = snapshot.value;
+    this.exists = snapshot.exists || true;
+    this.priority = snapshot.priority;
+    this.hasChildren = snapshot.hasChildren || false;
+    this.childrenCount = snapshot.childrenCount || 0;
+    this.childKeys = snapshot.childKeys || [];
+  }
+
+  babelHelpers.createClass(DataSnapshot, [{
+    key: 'val',
+    value: function val() {
+      return this.value;
+    }
+  }, {
+    key: 'forEach',
+    value: function forEach(fn) {
+      var _this = this;
+
+      (this.childKeys || []).forEach(function (key) {
+        return fn({ key: key, value: _this.value[key] });
+      });
+    }
+  }, {
+    key: 'map',
+    value: function map(fn) {
+      var arr = [];
+      this.forEach(function (item) {
+        return arr.push(fn(item));
+      });
+      return arr;
+    }
+  }, {
+    key: 'reverseMap',
+    value: function reverseMap(fn) {
+      return this.map(fn).reverse();
+    }
+  }]);
+  return DataSnapshot;
+}();
+
+var DatabaseOnDisconnect = function () {
+  function DatabaseOnDisconnect(ref) {
+    babelHelpers.classCallCheck(this, DatabaseOnDisconnect);
+
+    this.ref = ref;
+  }
+
+  babelHelpers.createClass(DatabaseOnDisconnect, [{
+    key: 'setValue',
+    value: function setValue(val) {
+      var path = this.ref.dbPath();
+      if (typeof val == 'string') {
+        return (0, _promisify2.default)('onDisconnectSetString', FirestackDatabase)(path, val);
+      } else if (typeof val == 'object') {
+        return (0, _promisify2.default)('onDisconnectSetObject', FirestackDatabase)(path, val);
+      }
+    }
+  }, {
+    key: 'remove',
+    value: function remove() {
+      var path = this.ref.dbPath();
+      return (0, _promisify2.default)('onDisconnectRemove', FirestackDatabase)(path);
+    }
+  }, {
+    key: 'cancel',
+    value: function cancel() {
+      var path = this.ref.dbPath();
+      return (0, _promisify2.default)('onDisconnectCancel', FirestackDatabase)(path);
+    }
+  }]);
+  return DatabaseOnDisconnect;
+}();
+
+var DatabaseQuery = function () {
+  function DatabaseQuery(ref) {
+    babelHelpers.classCallCheck(this, DatabaseQuery);
+
+    this.ref = ref;
+    this.reset();
+  }
+
+  babelHelpers.createClass(DatabaseQuery, [{
+    key: 'setOrderBy',
+    value: function setOrderBy(name) {
+      for (var _len = arguments.length, args = Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+        args[_key - 1] = arguments[_key];
+      }
+
+      this.orderBy = [name].concat(args);
+      return this.ref;
+    }
+  }, {
+    key: 'setLimit',
+    value: function setLimit(name) {
+      for (var _len2 = arguments.length, args = Array(_len2 > 1 ? _len2 - 1 : 0), _key2 = 1; _key2 < _len2; _key2++) {
+        args[_key2 - 1] = arguments[_key2];
+      }
+
+      this.limit = [name].concat(args);
+      return this.ref;
+    }
+  }, {
+    key: 'setFilter',
+    value: function setFilter(name) {
+      for (var _len3 = arguments.length, args = Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
+        args[_key3 - 1] = arguments[_key3];
+      }
+
+      this.filters[name] = args.filter(function (n) {
+        return n != undefined;
+      });
+      return this.ref;
+    }
+  }, {
+    key: 'build',
+    value: function build() {
+      var _this2 = this;
+
+      var argsSeparator = ':';
+      var modifiers = [];
+      if (this.orderBy) {
+        modifiers.push(this.orderBy.join(argsSeparator));
+      }
+      if (this.limit) {
+        modifiers.push(this.limit.join(argsSeparator));
+      }
+      Object.keys(this.filters).forEach(function (key) {
+        var filter = _this2.filters[key];
+        if (filter) {
+          var cleanFilters = filter.filter(function (f) {
+            return typeof f !== "undefined";
+          });
+          var filterArgs = [key].concat(cleanFilters).join(argsSeparator);
+          modifiers.push(filterArgs);
+        }
+      });
+      return modifiers;
+    }
+  }, {
+    key: 'reset',
+    value: function reset() {
+      var _this3 = this;
+
+      this.orderBy = null;
+      this.limit = null;
+      this.filters = {};
+      ['startAt', 'endAt', 'equalTo'].forEach(function (key) {
+        return _this3.filters[key] = null;
+      });
+      return this.ref;
+    }
+  }]);
+  return DatabaseQuery;
+}();
+
+var separator = '/';
+
+var DatabaseRef = function (_ReferenceBase) {
+  babelHelpers.inherits(DatabaseRef, _ReferenceBase);
+
+  function DatabaseRef(db, path) {
+    babelHelpers.classCallCheck(this, DatabaseRef);
+
+    var _this4 = babelHelpers.possibleConstructorReturn(this, (DatabaseRef.__proto__ || Object.getPrototypeOf(DatabaseRef)).call(this, db.firestack, path));
+
+    _this4.db = db;
+    _this4.query = new DatabaseQuery(_this4);
+    _this4.listeners = {};
+
+    _this4.get = _this4.getAt;
+    _this4.set = _this4.setAt;
+    _this4.update = _this4.updateAt;
+    _this4.remove = _this4.removeAt;
+
+    _this4.log.debug('Created new DatabaseRef', _this4.dbPath());
+    return _this4;
+  }
+
+  babelHelpers.createClass(DatabaseRef, [{
+    key: 'parent',
+    value: function parent() {
+      var parentPaths = this.path.slice(0, -1);
+      return new DatabaseRef(this.db, parentPaths);
+    }
+  }, {
+    key: 'root',
+    value: function root() {
+      return new DatabaseRef(this.db, []);
+    }
+  }, {
+    key: 'child',
+    value: function child() {
+      for (var _len4 = arguments.length, paths = Array(_len4), _key4 = 0; _key4 < _len4; _key4++) {
+        paths[_key4] = arguments[_key4];
+      }
+
+      return new DatabaseRef(this.db, this.path.concat(paths));
+    }
+  }, {
+    key: 'keepSynced',
+    value: function keepSynced(bool) {
+      var path = this.dbPath();
+      return (0, _promisify2.default)('keepSynced', FirestackDatabase)(path, bool);
+    }
+  }, {
+    key: 'getAt',
+    value: function getAt() {
+      var path = this.dbPath();
+      var modifiers = this.dbModifiers();
+      return (0, _promisify2.default)('onOnce', FirestackDatabase)(path, modifiers, 'value');
+    }
+  }, {
+    key: 'setAt',
+    value: function setAt(val) {
+      var path = this.dbPath();
+      var value = this._serializeValue(val);
+      return (0, _promisify2.default)('set', FirestackDatabase)(path, value);
+    }
+  }, {
+    key: 'updateAt',
+    value: function updateAt(val) {
+      var path = this.dbPath();
+      var value = this._serializeValue(val);
+      return (0, _promisify2.default)('update', FirestackDatabase)(path, value);
+    }
+  }, {
+    key: 'removeAt',
+    value: function removeAt(key) {
+      var path = this.dbPath();
+      return (0, _promisify2.default)('remove', FirestackDatabase)(path);
+    }
+  }, {
+    key: 'push',
+    value: function push() {
+      var _this5 = this;
+
+      var val = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+      var path = this.dbPath();
+      var value = this._serializeValue(val);
+      return (0, _promisify2.default)('push', FirestackDatabase)(path, value).then(function (_ref) {
+        var ref = _ref.ref;
+
+        return new DatabaseRef(_this5.db, ref.split(separator));
+      });
+    }
+  }, {
+    key: 'on',
+    value: function on(evt, cb) {
+      var _this6 = this;
+
+      var path = this.dbPath();
+      var modifiers = this.dbModifiers();
+      return this.db.on(path, evt, cb).then(function (_ref2) {
+        var callback = _ref2.callback,
+            subscriptions = _ref2.subscriptions;
+
+        return (0, _promisify2.default)('on', FirestackDatabase)(path, modifiers, evt).then(function () {
+          _this6.listeners[evt] = subscriptions;
+          callback(_this6);
+          return subscriptions;
+        });
+      });
+    }
+  }, {
+    key: 'once',
+    value: function once() {
+      var _this7 = this;
+
+      var evt = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'once';
+      var cb = arguments[1];
+
+      var path = this.dbPath();
+      var modifiers = this.dbModifiers();
+      return (0, _promisify2.default)('onOnce', FirestackDatabase)(path, modifiers, evt).then(function (_ref3) {
+        var snapshot = _ref3.snapshot;
+        return new DataSnapshot(_this7, snapshot);
+      }).then(function (snapshot) {
+        if (cb && typeof cb === 'function') {
+          cb(snapshot);
+        }
+        return snapshot;
+      });
+    }
+  }, {
+    key: 'off',
+    value: function off() {
+      var _this8 = this;
+
+      var evt = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var origCB = arguments[1];
+
+      var path = this.dbPath();
+      return this.db.off(path, evt, origCB).then(function (_ref4) {
+        var callback = _ref4.callback,
+            subscriptions = _ref4.subscriptions;
+
+        if (dbSubscriptions[path] && dbSubscriptions[path][evt] && dbSubscriptions[path][evt].length > 0) {
+          return subscriptions;
+        }
+
+        return (0, _promisify2.default)('off', FirestackDatabase)(path, evt).then(function () {
+          delete _this8.listeners[evt];
+          callback(_this8);
+          return subscriptions;
+        });
+      }).catch(function (err) {
+        console.error('Never get here', err);
+      });
+    }
+  }, {
+    key: 'cleanup',
+    value: function cleanup() {
+      var _this9 = this;
+
+      var promises = Object.keys(this.listeners).map(function (key) {
+        return _this9.off(key);
+      });
+      return Promise.all(promises);
+    }
+  }, {
+    key: '_serializeValue',
+    value: function _serializeValue() {
+      var obj = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+      return Object.keys(obj).reduce(function (sum, key) {
+        var val = obj[key];
+        if (val instanceof Date) {
+          val = val.toISOString();
+        }
+        return babelHelpers.extends({}, sum, babelHelpers.defineProperty({}, key, val));
+      }, {});
+    }
+  }, {
+    key: '_deserializeValue',
+    value: function _deserializeValue() {
+      var obj = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+
+      return Object.keys(obj).reduce(function (sum, key) {
+        var val = obj[key];
+        if (val instanceof Date) {
+          val = val.getTime();
+        }
+        return babelHelpers.extends({}, sum, babelHelpers.defineProperty({}, key, val));
+      }, {});
+    }
+  }, {
+    key: 'orderByKey',
+    value: function orderByKey() {
+      return this.query.setOrderBy('orderByKey');
+    }
+  }, {
+    key: 'orderByPriority',
+    value: function orderByPriority() {
+      return this.query.setOrderBy('orderByPriority');
+    }
+  }, {
+    key: 'orderByValue',
+    value: function orderByValue() {
+      return this.query.setOrderBy('orderByValue');
+    }
+  }, {
+    key: 'orderByChild',
+    value: function orderByChild(key) {
+      return this.query.setOrderBy('orderByChild', key);
+    }
+  }, {
+    key: 'limitToLast',
+    value: function limitToLast(limit) {
+      return this.query.setLimit('limitToLast', limit);
+    }
+  }, {
+    key: 'limitToFirst',
+    value: function limitToFirst(limit) {
+      return this.query.setLimit('limitToFirst', limit);
+    }
+  }, {
+    key: 'equalTo',
+    value: function equalTo(value, key) {
+      return this.query.setFilter('equalTo', value, key);
+    }
+  }, {
+    key: 'endAt',
+    value: function endAt(value, key) {
+      return this.query.setFilter('endAt', value, key);
+    }
+  }, {
+    key: 'startAt',
+    value: function startAt(value, key) {
+      return this.query.setFilter('startAt', value, key);
+    }
+  }, {
+    key: 'presence',
+    value: function presence(path) {
+      var presence = this.firestack.presence;
+      var ref = path ? this.child(path) : this;
+      return presence.ref(ref, this.dbPath());
+    }
+  }, {
+    key: 'onDisconnect',
+    value: function onDisconnect() {
+      return new DatabaseOnDisconnect(this);
+    }
+  }, {
+    key: 'dbPath',
+    value: function dbPath() {
+      var path = this.path;
+      var pathStr = path.length > 0 ? path.join('/') : '/';
+      if (pathStr[0] != '/') {
+        pathStr = '/' + pathStr;
+      }
+      return pathStr;
+    }
+  }, {
+    key: 'dbModifiers',
+    value: function dbModifiers() {
+      var modifiers = this.query.build();
+      this.query.reset();
+      return modifiers;
+    }
+  }, {
+    key: 'fullPath',
+    get: function get() {
+      return this.dbPath();
+    }
+  }, {
+    key: 'name',
+    get: function get() {
+      return this.path.splice(-1);
+    }
+  }, {
+    key: 'namespace',
+    get: function get() {
+      return 'firestack:dbRef';
+    }
+  }]);
+  return DatabaseRef;
+}(_base.ReferenceBase);
+
+var Database = exports.Database = function (_Base) {
+  babelHelpers.inherits(Database, _Base);
+
+  function Database(firestack) {
+    var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    babelHelpers.classCallCheck(this, Database);
+
+    var _this10 = babelHelpers.possibleConstructorReturn(this, (Database.__proto__ || Object.getPrototypeOf(Database)).call(this, firestack, options));
+
+    _this10.log.debug('Created new Database instance', _this10.options);
+
+    _this10.persistenceEnabled = false;
+    _this10.successListener = null;
+    _this10.errorListener = null;
+    _this10.refs = {};
+    return _this10;
+  }
+
+  babelHelpers.createClass(Database, [{
+    key: 'ref',
+    value: function ref() {
+      for (var _len5 = arguments.length, path = Array(_len5), _key5 = 0; _key5 < _len5; _key5++) {
+        path[_key5] = arguments[_key5];
+      }
+
+      var key = this._pathKey(path);
+      if (!this.refs[key]) {
+        var ref = new DatabaseRef(this, path);
+        this.refs[key] = ref;
+      }
+      return this.refs[key];
+    }
+  }, {
+    key: 'setPersistence',
+    value: function setPersistence() {
+      var enable = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : true;
+
+      var promise = void 0;
+      if (this.persistenceEnabled !== enable) {
+        this.log.debug((enable ? 'Enabling' : 'Disabling') + ' persistence');
+        promise = this.whenReady((0, _promisify2.default)('enablePersistence', FirestackDatabase)(enable));
+        this.persistenceEnabled = enable;
+      } else {
+        promise = this.whenReady(Promise.resolve({ status: "Already enabled" }));
+      }
+
+      return promise;
+    }
+  }, {
+    key: 'handleDatabaseEvent',
+    value: function handleDatabaseEvent(evt) {
+      var _this11 = this;
+
+      var body = evt.body;
+      var path = body.path;
+      var evtName = body.eventName;
+
+      var subscriptions = dbSubscriptions[path];
+
+      if (subscriptions) {
+        var cbs = subscriptions[evtName];
+        cbs.forEach(function (cb) {
+          if (cb && typeof cb === 'function') {
+            var snap = new DataSnapshot(_this11, body.snapshot);
+            _this11.log.debug('database_event received', path, evtName);
+            cb(snap, body);
+          }
+        });
+      }
+    }
+  }, {
+    key: 'handleDatabaseError',
+    value: function handleDatabaseError(evt) {
+      this.log.debug('handleDatabaseError ->', evt);
+    }
+  }, {
+    key: 'on',
+    value: function on(path, evt, cb) {
+      var _this12 = this;
+
+      var key = this._pathKey(path);
+
+      if (!dbSubscriptions[key]) {
+        dbSubscriptions[key] = {};
+      }
+
+      if (!dbSubscriptions[key][evt]) {
+        dbSubscriptions[key][evt] = [];
+      }
+      dbSubscriptions[key][evt].push(cb);
+
+      if (!this.successListener) {
+        this.successListener = FirestackDatabaseEvt.addListener('database_event', this.handleDatabaseEvent.bind(this));
+      }
+
+      if (!this.errorListener) {
+        this.errorListener = FirestackDatabaseEvt.addListener('database_error', this.handleDatabaseError.bind(this));
+      }
+
+      var callback = function callback(ref) {
+        var key = _this12._pathKey(ref.path);
+        _this12.refs[key] = ref;
+      };
+      var subscriptions = [this.successListener, this.errorListener];
+      return Promise.resolve({ callback: callback, subscriptions: subscriptions });
+    }
+  }, {
+    key: 'off',
+    value: function off(path, evt, origCB) {
+      var _this13 = this;
+
+      var key = this._pathKey(path);
+
+      if (dbSubscriptions[key]) {
+        if (!evt || evt === "") {
+          dbSubscriptions[key] = {};
+        } else if (dbSubscriptions[key][evt]) {
+          if (origCB) {
+            dbSubscriptions[key][evt].splice(dbSubscriptions[key][evt].indexOf(origCB), 1);
+          } else {
+            delete dbSubscriptions[key][evt];
+          }
+        }
+
+        if (Object.keys(dbSubscriptions[key]).length <= 0) {
+          delete dbSubscriptions[key];
+        }
+        if (Object.keys(dbSubscriptions).length == 0) {
+          if (this.successListener) {
+            this.successListener.remove();
+            this.successListener = null;
+          }
+          if (this.errorListener) {
+            this.errorListener.remove();
+            this.errorListener = null;
+          }
+        }
+      }
+      var callback = function callback(ref) {
+        var key = _this13._pathKey(ref.path);
+        delete _this13.refs[key];
+      };
+      var subscriptions = [this.successListener, this.errorListener];
+      return Promise.resolve({ callback: callback, subscriptions: subscriptions });
+    }
+  }, {
+    key: 'cleanup',
+    value: function cleanup() {
+      var _this14 = this;
+
+      var promises = Object.keys(this.refs).map(function (key) {
+        return _this14.refs[key];
+      }).map(function (ref) {
+        return ref.cleanup();
+      });
+      return Promise.all(promises);
+    }
+  }, {
+    key: 'release',
+    value: function release() {
+      for (var _len6 = arguments.length, path = Array(_len6), _key6 = 0; _key6 < _len6; _key6++) {
+        path[_key6] = arguments[_key6];
+      }
+
+      var key = this._pathKey(path);
+      if (this.refs[key]) {
+        delete this.refs[key];
+      }
+    }
+  }, {
+    key: '_pathKey',
+    value: function _pathKey() {
+      for (var _len7 = arguments.length, path = Array(_len7), _key7 = 0; _key7 < _len7; _key7++) {
+        path[_key7] = arguments[_key7];
+      }
+
+      return path.join('-');
+    }
+  }, {
+    key: 'namespace',
+    get: function get() {
+      return 'firestack:database';
+    }
+  }]);
+  return Database;
+}(_base.Base);
+
+exports.default = Database;

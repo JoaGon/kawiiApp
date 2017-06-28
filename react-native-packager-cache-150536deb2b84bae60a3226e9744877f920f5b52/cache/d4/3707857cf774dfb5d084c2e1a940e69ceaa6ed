@@ -1,0 +1,335 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.FirestackModule = undefined;
+
+var _invariant = require('invariant');
+
+var _invariant2 = babelHelpers.interopRequireDefault(_invariant);
+
+var createTypes = function createTypes(prefix) {
+  var c = function c(str) {
+    return prefix.toUpperCase() + '_' + str.toUpperCase();
+  };
+  return {
+    ACTION_CALL: c('call_function'),
+    ACTION_SUCCESS: c('call_function_success'),
+    ACTION_FAIL: c('call_function_failure'),
+
+    ACTION_LISTEN: c('listen'),
+    ACTION_UNLISTEN: c('unlisten'),
+    ACTION_REMOVE: c('remove'),
+    ACTION_UPDATE: c('update'),
+    ACTION_SET: c('set'),
+    ACTION_GET: c('get'),
+    ITEM_VALUE: c('value'),
+    ITEM_ADDED: c('added'),
+    ITEM_REMOVED: c('remove'),
+    ITEM_CHANGED: c('changed'),
+    UPDATED: c('updated')
+  };
+};
+
+var defaultToObject = function defaultToObject(child) {
+  return babelHelpers.extends({ _key: child.key }, child.val());
+};
+var identity = function identity(i) {
+  return i;
+};
+var defaultSortFn = function defaultSortFn(a, b) {
+  return a.timestamp < b.timestamp;
+};
+var defaultInitialState = {
+  items: []
+};
+
+var FirestackModule = exports.FirestackModule = function () {
+  function FirestackModule(refName) {
+    var opts = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    babelHelpers.classCallCheck(this, FirestackModule);
+
+    (0, _invariant2.default)(refName && typeof refName !== 'undefined', 'No ref name passed');
+
+    this._refName = refName;
+    this._makeRef = opts.makeRef || identity;
+
+    var initialState = babelHelpers.extends({}, opts.initialState || defaultInitialState, {
+      listening: false,
+      items: []
+    });
+
+    this._localState = initialState;
+
+    this._types = createTypes(this._refName);
+    this._toObject = opts.toObject || defaultToObject;
+    this._sortFn = opts.sortFn || defaultSortFn;
+    this._onChange = opts.onChange || identity;
+
+    if (opts.firestack) {
+      this.setFirestack(opts.firestack);
+    } else if (opts.store) {
+      this.setStore(opts.store);
+    }
+  }
+
+  babelHelpers.createClass(FirestackModule, [{
+    key: 'makeRef',
+    value: function makeRef(path) {
+      var _firestack$database;
+
+      var refName = [this._refName, path];
+      var ref = (_firestack$database = this._firestack.database).ref.apply(_firestack$database, refName);
+      return this._makeRef(ref);
+    }
+  }, {
+    key: 'setFirestack',
+    value: function setFirestack(firestack) {
+      if (firestack) {
+        this._firestack = firestack;
+      }
+    }
+  }, {
+    key: 'setStore',
+    value: function setStore(store) {
+      if (store) {
+        this._store = store;
+      }
+    }
+  }, {
+    key: 'listen',
+    value: function listen(cb) {
+      var _this = this;
+
+      var store = this._getStore();
+      (0, _invariant2.default)(store, 'Please set the store');
+
+      var T = this._types;
+      var listenRef = this.makeRef();
+      var toObject = this._toObject;
+
+      var _itemAdded = function _itemAdded(snapshot, prevKey) {
+        var state = _this._getState();
+        var newItem = toObject(snapshot, state);
+        var list = state.items || [];
+        list.push(newItem);
+        list = list.sort(_this._sortFn);
+        return _this._handleUpdate(T.ITEM_ADDED, { items: list }, cb);
+      };
+      var _itemRemoved = function _itemRemoved(snapshot, prevKey) {
+        var state = _this._getState();
+        var itemKeys = state.items.map(function (i) {
+          return i._key;
+        });
+        var itemIndex = itemKeys.indexOf(snapshot.key);
+        var newItems = [].concat(state.items);
+        newItems.splice(itemIndex, 1);
+        var list = newItems.sort(_this._sortFn);
+        return _this._handleUpdate(T.ITEM_REMOVED, { items: list }, cb);
+      };
+      var _itemChanged = function _itemChanged(snapshot, prevKey) {
+        var state = _this._getState();
+        var existingItem = toObject(snapshot, state);
+
+        var list = state.items;
+        var listIds = state.items.map(function (i) {
+          return i._key;
+        });
+        var itemIdx = listIds.indexOf(existingItem._key);
+        list.splice(itemIdx, 1, existingItem);
+
+        return _this._handleUpdate(T.ITEM_CHANGED, { items: list }, cb);
+      };
+
+      return new Promise(function (resolve, reject) {
+        listenRef.on('child_added', _itemAdded);
+        listenRef.on('child_removed', _itemRemoved);
+        listenRef.on('child_changed', _itemChanged);
+
+        _this._handleUpdate(T.ACTION_LISTEN, null, function (state) {
+          resolve(state);
+        });
+      });
+    }
+  }, {
+    key: 'unlisten',
+    value: function unlisten() {
+      var _this2 = this;
+
+      var T = this._types;
+      var ref = this.makeRef();
+
+      return new Promise(function (resolve, reject) {
+        ref.off().then(function (success) {
+          _this2._handleUpdate(T.ACTION_UNLISTEN, null, function (state) {
+            resolve(state);
+          });
+        });
+      });
+    }
+  }, {
+    key: 'getAt',
+    value: function getAt(path, cb) {
+      var _this3 = this;
+
+      var T = this._types;
+      var ref = this.makeRef(path);
+      var toObject = this._toObject;
+
+      return new Promise(function (resolve, reject) {
+        ref.once('value', function (snapshot) {
+          _this3._handleUpdate(T.ACTION_GET, null, function (state) {
+            if (cb) {
+              cb(toObject(snapshot, state));
+            }
+            resolve(state);
+          });
+        }, reject);
+      });
+    }
+  }, {
+    key: 'setAt',
+    value: function setAt(path, value, cb) {
+      var _this4 = this;
+
+      var T = this._types;
+      var ref = this.makeRef(path);
+      var toObject = this._toObject;
+
+      return new Promise(function (resolve, reject) {
+        ref.setAt(value, function (error) {
+          _this4._handleUpdate(T.ACTION_SET, null, function (state) {
+            if (cb) {
+              cb(error, value);
+            }
+            return error ? reject(error) : resolve(value);
+          });
+        });
+      });
+    }
+  }, {
+    key: 'updateAt',
+    value: function updateAt(path, value, cb) {
+      var _this5 = this;
+
+      var T = this._types;
+      var ref = this.makeRef(path);
+      var toObject = this._toObject;
+
+      return new Promise(function (resolve, reject) {
+        ref.updateAt(value, function (error, snapshot) {
+          _this5._handleUpdate(T.ACTION_UPDATE, null, function (state) {
+            if (cb) {
+              cb(toObject(snapshot, state));
+            }
+            return error ? reject(error) : resolve(value);
+          });
+        });
+      });
+    }
+  }, {
+    key: 'removeAt',
+    value: function removeAt(path, cb) {
+      var _this6 = this;
+
+      var T = this._types;
+      var ref = this.makeRef(path);
+      var toObject = this._toObject;
+
+      return new Promise(function (resolve, reject) {
+        ref.removeAt(function (error, snapshot) {
+          _this6._handleUpdate(T.ACTION_SET, null, function (state) {
+            if (cb) {
+              cb(toObject(snapshot, state));
+            }
+            return error ? reject(error) : resolve(value);
+          });
+        });
+      });
+    }
+  }, {
+    key: '_handleUpdate',
+    value: function _handleUpdate(type) {
+      var newState = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var cb = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : identity;
+
+      var store = this._getStore();
+      if (store && store.dispatch && typeof store.dispatch === 'function') {
+        store.dispatch({ type: type, payload: newState, meta: { module: this._refName } });
+      }
+      return cb(newState);
+    }
+  }, {
+    key: '_getStore',
+    value: function _getStore() {
+      return this._store ? this._store : this._firestack ? this._firestack.store : null;
+    }
+  }, {
+    key: '_getState',
+    value: function _getState() {
+      var store = this._getStore();
+      return store.getState()[this._refName];
+    }
+  }, {
+    key: 'actions',
+    get: function get() {
+      var _this7 = this;
+
+      var T = this._types;
+
+      var wrap = function wrap(fn) {
+        return function () {
+          for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
+            args[_key] = arguments[_key];
+          }
+
+          var params = args && args.length > 0 ? args : [];
+          var promise = fn.bind(_this7).apply(undefined, params);
+          return { type: T.ACTION_CALL, payload: promise };
+        };
+      };
+
+      return ['listen', 'unlisten', 'getAt', 'setAt', 'updateAt', 'removeAt'].reduce(function (sum, name) {
+        return babelHelpers.extends({}, sum, babelHelpers.defineProperty({}, name, wrap(_this7[name])));
+      }, {});
+    }
+  }, {
+    key: 'initialState',
+    get: function get() {
+      return this._initialState;
+    }
+  }, {
+    key: 'types',
+    get: function get() {
+      return this._types;
+    }
+  }, {
+    key: 'reducer',
+    get: function get() {
+      var _this8 = this;
+
+      var T = this._types;
+      return function () {
+        var state = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : _this8._localState;
+        var _ref = arguments[1];
+        var type = _ref.type,
+            payload = _ref.payload,
+            meta = _ref.meta;
+
+        if (meta && meta.module && meta.module === _this8._refName) {
+          switch (type) {
+            case T.ACTION_LISTEN:
+              return babelHelpers.extends({}, state, { listening: true });
+            case T.ACTION_UNLISTEN:
+              return babelHelpers.extends({}, state, { listening: false });
+            default:
+              return babelHelpers.extends({}, state, payload);
+          }
+        }
+        return state;
+      };
+    }
+  }]);
+  return FirestackModule;
+}();
+
+exports.default = FirestackModule;

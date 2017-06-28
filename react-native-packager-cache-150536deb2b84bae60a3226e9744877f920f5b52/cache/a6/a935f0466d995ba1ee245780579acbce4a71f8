@@ -1,0 +1,9 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _firestack = require('./lib/firestack');
+
+var _firestack2 = babelHelpers.interopRequireDefault(_firestack);
+
+exports.default = _firestack2.default;

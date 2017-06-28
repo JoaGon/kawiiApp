@@ -1,0 +1,142 @@
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.ReferenceBase = exports.Base = undefined;
+
+var _log = require('../utils/log');
+
+var _log2 = babelHelpers.interopRequireDefault(_log);
+
+var _reactNative = require('react-native');
+
+var _promisify = require('../utils/promisify');
+
+var _promisify2 = babelHelpers.interopRequireDefault(_promisify);
+
+var FirestackModule = _reactNative.NativeModules.Firestack;
+var FirestackModuleEvt = new _reactNative.NativeEventEmitter(FirestackModule);
+
+var logs = {};
+
+var Base = exports.Base = function () {
+  function Base(firestack) {
+    var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    babelHelpers.classCallCheck(this, Base);
+
+    this.firestack = firestack;
+    this.eventHandlers = {};
+
+    this.options = babelHelpers.extends({}, firestack.options, options);
+  }
+
+  babelHelpers.createClass(Base, [{
+    key: '_addConstantExports',
+    value: function _addConstantExports(constants) {
+      Object.keys(constants).forEach(function (name) {
+        FirestackModule[name] = constants[name];
+      });
+    }
+  }, {
+    key: '_addToFirestackInstance',
+    value: function _addToFirestackInstance() {
+      var _this = this;
+
+      for (var _len = arguments.length, methods = Array(_len), _key = 0; _key < _len; _key++) {
+        methods[_key] = arguments[_key];
+      }
+
+      methods.forEach(function (name) {
+        _this.firestack[name] = _this[name].bind(_this);
+      });
+    }
+  }, {
+    key: 'whenReady',
+    value: function whenReady(fn) {
+      return this.firestack.configurePromise.then(fn);
+    }
+  }, {
+    key: '_on',
+    value: function _on(name, cb, nativeModule) {
+      var _this2 = this;
+
+      return new Promise(function (resolve) {
+        if (!nativeModule) {
+          nativeModule = FirestackModuleEvt;
+        }
+        var sub = nativeModule.addListener(name, cb);
+        _this2.eventHandlers[name] = sub;
+        resolve(sub);
+      });
+    }
+  }, {
+    key: '_off',
+    value: function _off(name) {
+      var _this3 = this;
+
+      return new Promise(function (resolve, reject) {
+        if (_this3.eventHandlers[name]) {
+          var subscription = _this3.eventHandlers[name];
+          subscription.remove();
+          delete _this3.eventHandlers[name];
+          resolve(subscription);
+        }
+      });
+    }
+  }, {
+    key: 'log',
+    get: function get() {
+      if (!logs[this.namespace]) {
+        var debug = this.firestack._debug;
+        logs[this.namespace] = new _log2.default(this.namespace, debug);
+      }
+      return logs[this.namespace];
+    }
+  }, {
+    key: 'app',
+    get: function get() {
+      return this.firestack.app;
+    }
+  }, {
+    key: 'namespace',
+    get: function get() {
+      return 'firestack:base';
+    }
+  }]);
+  return Base;
+}();
+
+var ReferenceBase = exports.ReferenceBase = function (_Base) {
+  babelHelpers.inherits(ReferenceBase, _Base);
+
+  function ReferenceBase(firestack, path) {
+    babelHelpers.classCallCheck(this, ReferenceBase);
+
+    var _this4 = babelHelpers.possibleConstructorReturn(this, (ReferenceBase.__proto__ || Object.getPrototypeOf(ReferenceBase)).call(this, firestack));
+
+    _this4.path = Array.isArray(path) ? path : typeof path == 'string' ? [path] : [];
+
+    _this4.path = _this4.path.filter(function (str) {
+      return str !== "";
+    });
+    return _this4;
+  }
+
+  babelHelpers.createClass(ReferenceBase, [{
+    key: 'pathToString',
+    value: function pathToString() {
+      var path = this.path;
+      var pathStr = path.length > 0 ? path.join('/') : '/';
+      if (pathStr[0] != '/') {
+        pathStr = '/' + pathStr;
+      }
+      return pathStr;
+    }
+  }, {
+    key: 'key',
+    get: function get() {
+      var path = this.path;
+      return path.length === 0 ? '/' : path[path.length - 1];
+    }
+  }]);
+  return ReferenceBase;
+}(Base);
